@@ -1,3 +1,4 @@
+
 /******************************************************************************
  * Lightweight embedded GDB server implementation for
  * 8-bit AVR MCU with 16 bit PC (i.e. 128kb max ROM)
@@ -40,7 +41,7 @@
 
 /* AVR puts garbage in hight bits on return address on stack.
    Mask them out */
-#if defined(__AVR_ATmega16__)
+#if defined(__AVR_ATmega16__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__)
 #define RET_ADDR_MASK  0x1f
 #else
 #error Unsupported platform
@@ -363,7 +364,7 @@ void init_timer1(void)
 {
 #define TIMER1_RATE 1000
 
-#if defined(__AVR_ATmega16__)
+#if defined(__AVR_ATmega16__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__)
 	/* Set CTC mode */
 	TCCR1B |= (1 << WGM12);
 	/* No prescaler */
@@ -371,7 +372,7 @@ void init_timer1(void)
 	/* Set the compare register */
 	OCR1A = F_CPU / TIMER1_RATE - 1;
 	/* Enable Output Compare Match Interrupt */
-	TIMSK |= (1 << OCIE1A);
+	TIMSK1 |= (1 << OCIE1A);
 #else
 #error Unsupported AVR device
 #endif
@@ -381,19 +382,19 @@ void init_uart(void)
 {
 #define BAUD_RATE 9600
 
-#if defined(__AVR_ATmega16__)
+#if defined(__AVR_ATmega16__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__)
 	uint16_t ubrr = F_CPU / 16 / BAUD_RATE - 1;
 
 	/* Disable uart rx/tx first */
-	UCSRB = 0;
+	UCSR0B = 0;
 
 	/* Set baud rate */
-	UBRRH = (unsigned char)(ubrr>>8);
-	UBRRL = (unsigned char)ubrr;
+	UBRR0H = (unsigned char)(ubrr>>8);
+	UBRR0L = (unsigned char)ubrr;
 	/* Set frame format: 8data, 1stop bit */
-	UCSRC = (1<<URSEL)|(3<<UCSZ0);
+	UCSR0C = (3<<UCSZ10);
 	/* Enable receiver, transmitter and RX interrupt */
-	UCSRB = (1<<RXEN)|(1<<TXEN)|(1<<RXCIE);
+	UCSR0B = (1<<RXEN1)|(1<<TXEN1)|(1<<RXCIE1);
 #else
 #error Unsupported AVR device
 #endif
@@ -444,7 +445,7 @@ out:
 	asm volatile ("reti \n\t");
 }
 
-ISR(USART_RXC_vect, ISR_NAKED)
+ISR(USART0_RX_vect, ISR_NAKED)
 {
 	GDB_SAVE_CONTEXT();
 	gdb_ctx->regs->pc_h &= RET_ADDR_MASK;
@@ -492,11 +493,11 @@ void gdb_init(struct gdb_context *ctx)
 
 static void gdb_send_byte(uint8_t b)
 {
-#if defined (__AVR_ATmega16__)
+#if defined(__AVR_ATmega16__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__)
 	/* Wait for empty transmit buffer */
-	while (!(UCSRA & (1<<UDRE)))
+	while (!(UCSR0A & (1<<UDRE0)))
 		;
-	UDR = b;
+	UDR0 = b;
 #else
 #error Unsupported AVR device
 #endif
@@ -504,12 +505,12 @@ static void gdb_send_byte(uint8_t b)
 
 static uint8_t gdb_read_byte(void)
 {
-#if defined (__AVR_ATmega16__)
+#if defined(__AVR_ATmega16__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__)
 	/* Wait for data to be received */
-	while (!(UCSRA & (1<<RXC)))
+	while (!(UCSR0A & (1<<RXC0)))
 		/* TODO: watchdog reset */
 		;
-	return UDR;
+	return UDR1;
 #else
 #error Unsupported AVR device
 #endif
